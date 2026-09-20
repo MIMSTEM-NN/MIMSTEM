@@ -1,0 +1,9 @@
+citHeader("To cite MIMSTEM in publications use:")
+
+bibentry(
+  bibtype = "Manual",
+  title = "MIMSTEM: Marginal Interventional Multi-State Time-to-Event Mediation",
+  author = personList(as.person("Nana Wang")),
+  year = "2026",
+  note = "R package version 1.0.0"
+)

@@ -1,0 +1,24 @@
+Package: MIMSTEM
+Type: Package
+Title: Marginal Interventional Multi-State Time-to-Event Mediation
+Version: 1.0.0
+Authors@R: person("Nana", "Wang", email = "wnn0924@126.com", role = c("aut", "cre"))
+Description: Implements three marginal interventional multi-state mediation
+    estimators for time-to-event mediators: MIMS-TEM for one time-to-event
+    mediator, MIMS-S2TEM-GE for overall effects with two sequential
+    time-to-event mediators, and MIMS-S2TEM-PE for path-specific decomposition
+    of the overall indirect effect. Individual-level nonparametric bootstrap
+    standard errors and Wald confidence intervals are supported.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: false
+Depends: R (>= 4.1.0)
+Imports:
+    mstate,
+    survival
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3

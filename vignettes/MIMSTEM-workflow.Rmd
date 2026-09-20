@@ -1,0 +1,205 @@
+---
+title: "MIMSTEM: analysis workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{MIMSTEM: analysis workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+# Overview
+
+`MIMSTEM` implements three marginal interventional multi-state mediation
+estimators for time-to-event mediators:
+
+- `mims_tem()` for one time-to-event mediator;
+- `mims_s2tem_ge()` for overall effects with two sequential time-to-event mediators;
+- `mims_s2tem_pe()` for path-specific decomposition with two sequential time-to-event mediators.
+
+The package preserves the estimands and numerical conventions used by the
+validated dissertation estimators. The recommended workflow is to validate the
+data and point estimates first, inspect diagnostics, and only then request the
+computationally intensive bootstrap.
+
+# Required data structure
+
+For MIMS-TEM, the subject-level data frame contains `A`, `t_out`, `d_out`
+(or `yevent`), `t_med`, `d_med`, and the baseline covariates named in `basec`.
+
+For MIMS-S2TEM-GE and MIMS-S2TEM-PE, the corresponding mediator columns are
+`t_med1`, `d_med1`, `t_med2`, and `d_med2`. Exposure `A` must be coded 0/1.
+The package expects one row per subject.
+
+Two synthetic data files are installed for workflow demonstrations. They are
+not dissertation empirical data.
+
+```{r example-data}
+library(MIMSTEM)
+
+tem_dat <- utils::read.csv(
+  system.file("extdata", "mims_example_tem.csv", package = "MIMSTEM")
+)
+
+s2_dat <- utils::read.csv(
+  system.file("extdata", "mims_example_s2tem.csv", package = "MIMSTEM")
+)
+
+names(tem_dat)
+names(s2_dat)
+```
+
+# MIMS-TEM
+
+Start with point estimation.
+
+```{r tem-point}
+fit_tem <- mims_tem(
+  dat = tem_dat,
+  tau = c(2, 4, 6),
+  basec = c("age", "sex"),
+  bootstrap = FALSE,
+  verbose = FALSE
+)
+
+summary(fit_tem)
+coef(fit_tem, tau = 6)
+```
+
+After checking the data coding and model diagnostics, bootstrap inference can
+be requested. The dissertation-standard default is ordinary individual-level
+nonparametric resampling with bootstrap standard errors and Wald confidence
+intervals.
+
+```{r tem-bootstrap}
+fit_tem_boot <- mims_tem(
+  dat = tem_dat,
+  tau = c(2, 4, 6),
+  basec = c("age", "sex"),
+  bootstrap = TRUE,
+  B = 200,
+  seed = 2026,
+  stratified = FALSE,
+  verbose = FALSE
+)
+
+summary(fit_tem_boot, tau = 6)
+confint(fit_tem_boot, tau = 6)
+```
+
+# MIMS-S2TEM-GE
+
+MIMS-S2TEM-GE estimates total, direct, and overall indirect effects for the
+complete sequential mediator process.
+
+```{r ge-point}
+fit_ge <- mims_s2tem_ge(
+  dat = s2_dat,
+  tau = c(2, 4, 6),
+  basec = c("age", "sex"),
+  bootstrap = FALSE,
+  verbose = FALSE
+)
+
+summary(fit_ge, tau = 6)
+fit_ge$point
+```
+
+The risk endpoints are `psi00`, `psi10`, and `psi11`, with
+
+`DE = psi10 - psi00`,
+
+`IE = psi11 - psi10`, and
+
+`TE = psi11 - psi00`.
+
+# MIMS-S2TEM-PE
+
+MIMS-S2TEM-PE retains the GE endpoints and introduces two intermediate
+counterfactual risks. The frozen switch order is `(zY, z2, z1, z12)`:
+
+`psi0000 -> psi1000 -> psi1100 -> psi1110 -> psi1111`.
+
+The primary analysis uses rank-preserving coupling for the two counterfactual
+copies of the first mediator and the `t2_overrides` mixed-history rule.
+
+```{r pe-point}
+fit_pe <- mims_s2tem_pe(
+  dat = s2_dat,
+  tau = c(2, 4, 6),
+  basec = c("age", "sex"),
+  bootstrap = FALSE,
+  primary_rule = "t2_overrides",
+  verbose = FALSE
+)
+
+summary(fit_pe, tau = 6)
+fit_pe$point
+```
+
+The main PE effects are
+
+- `DE = psi1000 - psi0000`;
+- `P_A_T2_Y = psi1100 - psi1000`;
+- `P_A_T1_Y = psi1110 - psi1100`;
+- `P_A_T1_T2_Y = psi1111 - psi1110`;
+- `TE = psi1111 - psi0000`.
+
+The overall indirect effect remains available in `fit_pe$point$IE_total` and
+satisfies
+
+`IE_total = P_A_T2_Y + P_A_T1_Y + P_A_T1_T2_Y`.
+
+# GE/PE consistency
+
+When GE and PE are fitted to the same data using the same settings, the shared
+endpoints should agree up to numerical tolerance.
+
+```{r endpoint-checks}
+max(abs(fit_pe$point$psi0000 - fit_ge$point$psi00))
+max(abs(fit_pe$point$psi1000 - fit_ge$point$psi10))
+max(abs(fit_pe$point$psi1111 - fit_ge$point$psi11))
+
+max(abs(
+  fit_pe$point$IE_total -
+    fit_pe$point$P_A_T2_Y -
+    fit_pe$point$P_A_T1_Y -
+    fit_pe$point$P_A_T1_T2_Y
+))
+```
+
+# Results and diagnostics
+
+All public estimators return an object inheriting from `mims_fit`.
+
+```{r result-access}
+fit_pe$point
+fit_pe$endpoints
+fit_pe$effects
+fit_pe$diagnostics
+fit_pe$settings
+
+as.data.frame(fit_pe)
+coef(fit_pe, tau = 6)
+confint(fit_pe, tau = 6)
+plot(fit_pe)
+```
+
+Cox-model warnings and path-kernel clipping diagnostics should be inspected,
+not automatically suppressed. A numerically produced estimate does not by
+itself establish the assumptions required for causal interpretation.
+
+# Reproducibility checklist
+
+For a reproducible analysis, record the package version, evaluation times,
+baseline covariates, exposure contrast, `EMint`, S2TEM grid settings, PE
+mixed-history rule, bootstrap replicate count, bootstrap seed, and resampling
+scheme.
+
+```{r reproducibility}
+packageVersion("MIMSTEM")
+fit_pe$settings
+```
