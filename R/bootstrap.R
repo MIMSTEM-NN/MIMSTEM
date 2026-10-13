@@ -53,27 +53,27 @@
 
 .mims_boot_sample_index <- function(dat, stratified = FALSE, exposure = "A") {
     n <- nrow(dat)
-
+    
     if (!isTRUE(stratified)) {
         return(sample.int(n, size = n, replace = TRUE))
     }
-
+    
     if (!exposure %in% names(dat)) {
         stop("stratified=TRUE requires exposure column: ", exposure)
     }
-
+    
     grp <- split(seq_len(n), dat[[exposure]], drop = TRUE)
     if (length(grp) < 2L) {
         stop("stratified bootstrap requires at least two exposure groups.")
     }
-
+    
     idx <- unlist(
         lapply(grp, function(ii) {
             ii[sample.int(length(ii), size = length(ii), replace = TRUE)]
         }),
         use.names = FALSE
     )
-
+    
     # Randomize row order after within-stratum resampling.
     idx[sample.int(length(idx))]
 }
@@ -89,12 +89,12 @@
     if (anyDuplicated(out$tau)) {
         stop("Estimator output contains duplicated tau values.")
     }
-
+    
     ix <- match(tau, out$tau)
     if (anyNA(ix)) {
         stop("Estimator output does not contain every requested tau value.")
     }
-
+    
     missing_metrics <- setdiff(metrics, names(out))
     if (length(missing_metrics)) {
         stop(
@@ -102,15 +102,15 @@
             paste(missing_metrics, collapse = ", ")
         )
     }
-
+    
     z <- out[ix, c("tau", metrics), drop = FALSE]
-
+    
     mat <- as.matrix(z[metrics])
     storage.mode(mat) <- "double"
     if (any(!is.finite(mat))) {
         stop("Estimator returned non-finite values in requested bootstrap metrics.")
     }
-
+    
     z
 }
 
@@ -140,21 +140,21 @@
     if (!is.list(estimator_args)) {
         stop("estimator_args must be a list.")
     }
-
+    
     tau <- sort(unique(as.numeric(tau)))
     if (!length(tau) || any(!is.finite(tau)) || any(tau <= 0)) {
         stop("tau must contain positive finite evaluation times.")
     }
-
+    
     if (!is.character(metrics) || !length(metrics) ||
         anyNA(metrics) || any(!nzchar(metrics)) || anyDuplicated(metrics)) {
         stop("metrics must be a non-empty character vector with unique names.")
     }
-
+    
     B <- .mims_boot_integer(B, "B", 2L)
     seed <- .mims_boot_integer(seed, "seed", 0L)
     .mims_boot_validate_ci(conf_level)
-
+    
     if (length(stratified) != 1L || !is.logical(stratified) || is.na(stratified)) {
         stop("stratified must be TRUE or FALSE.")
     }
@@ -168,7 +168,7 @@
         min_success_fraction > 1) {
         stop("min_success_fraction must lie in (0, 1].")
     }
-
+    
     # Preserve the caller's RNG state.
     old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
     old_seed <- if (old_seed_exists) {
@@ -177,20 +177,20 @@
         NULL
     }
     on.exit(.mims_boot_restore_seed(old_seed_exists, old_seed), add = TRUE)
-
+    
     # Point estimate: use the same estimator and arguments as every replicate.
     point_args <- utils::modifyList(
         list(dat = dat, tau = tau),
         estimator_args,
         keep.null = TRUE
     )
-
+    
     point <- do.call(estimator, point_args)
     point_extract <- .mims_boot_extract(point, tau = tau, metrics = metrics)
-
+    
     K <- length(tau)
     M <- length(metrics)
-
+    
     arr <- array(
         NA_real_,
         dim = c(K, M, B),
@@ -200,33 +200,33 @@
             replicate = paste0("b", seq_len(B))
         )
     )
-
+    
     status <- vector("list", B)
     ok_index <- logical(B)
-
+    
     set.seed(seed)
-
+    
     for (b in seq_len(B)) {
         start_time <- proc.time()[[3]]
-
+        
         idx <- .mims_boot_sample_index(
             dat = dat,
             stratified = stratified,
             exposure = exposure
         )
-
+        
         dd <- dat[idx, , drop = FALSE]
         rownames(dd) <- NULL
-
+        
         # Duplicated subject IDs after resampling are expected.  The estimator
         # works on one row per resampled subject, so reset the identifier.
         if (isTRUE(reset_id) && "id" %in% names(dd)) {
             dd$id <- seq_len(nrow(dd))
         }
-
+        
         warnings_seen <- character(0)
         error_text <- ""
-
+        
         val <- tryCatch(
             withCallingHandlers(
                 {
@@ -248,14 +248,14 @@
                 NULL
             }
         )
-
+        
         ok <- !is.null(val)
         ok_index[b] <- ok
-
+        
         if (ok) {
             arr[, , b] <- as.matrix(val[metrics])
         }
-
+        
         status[[b]] <- data.frame(
             replicate = b,
             status = if (!ok) {
@@ -270,7 +270,7 @@
             error = error_text,
             stringsAsFactors = FALSE
         )
-
+        
         if (isTRUE(verbose) && (b == 1L || b %% 10L == 0L || b == B)) {
             message(
                 "Bootstrap ", b, "/", B, ": ",
@@ -278,35 +278,35 @@
             )
         }
     }
-
+    
     n_ok <- sum(ok_index)
     required_ok <- max(2L, ceiling(B * min_success_fraction))
     enough <- n_ok >= required_ok
-
+    
     status_df <- do.call(rbind, status)
-
+    
     alpha <- 1 - conf_level
     zcrit <- stats::qnorm(1 - alpha / 2)
-
+    
     # Long-format interval table: one row per tau x estimand.
     interval_rows <- vector("list", K * M)
     rr <- 0L
-
+    
     for (k in seq_len(K)) {
         for (m in seq_len(M)) {
             rr <- rr + 1L
             metric <- metrics[m]
             estimate <- point_extract[[metric]][k]
-
+            
             se <- lower <- upper <- NA_real_
-
+            
             if (enough) {
                 x <- arr[k, m, ok_index]
                 se <- stats::sd(x, na.rm = TRUE)
                 lower <- estimate - zcrit * se
                 upper <- estimate + zcrit * se
             }
-
+            
             interval_rows[[rr]] <- data.frame(
                 tau = tau[k],
                 metric = metric,
@@ -319,9 +319,9 @@
             )
         }
     }
-
+    
     intervals <- do.call(rbind, interval_rows)
-
+    
     diagnostics <- list(
         B_total = B,
         B_ok = n_ok,
@@ -343,7 +343,7 @@
             "centered on the original-sample point estimate."
         )
     )
-
+    
     if (!enough) {
         warning(
             "Too few successful bootstrap replicates; SEs and Wald intervals are NA. ",
@@ -357,17 +357,17 @@
             call. = FALSE
         )
     }
-
+    
     out <- list(
         point = point,
         intervals = intervals,
         diagnostics = diagnostics
     )
-
+    
     if (isTRUE(keep_replicates)) {
         out$replicates <- arr
     }
-
+    
     class(out) <- c("mims_bootstrap", "list")
     out
 }
@@ -399,14 +399,14 @@ bootstrap_mims_s2tem_ge <- function(
     if (!exists("mims_s2tem_ge_point", mode = "function")) {
         stop("Source the verified S2TEM backend before calling this function.")
     }
-
+    
     scale <- match.arg(scale)
-
+    
     metrics <- c(
         "DE", "IE", "TE",
         "DE_RMTL", "IE_RMTL", "TE_RMTL"
     )
-
+    
     .bootstrap_mims_wald(
         dat = dat,
         estimator = mims_s2tem_ge_point,
@@ -466,26 +466,29 @@ bootstrap_mims_s2tem_pe <- function(
     if (!exists("mims_s2tem_pe_point", mode = "function")) {
         stop("Source the verified S2TEM-PE refactor before calling this function.")
     }
-
+    
     scale <- match.arg(scale)
     primary_rule <- match.arg(primary_rule)
-
-    # Default public PE bootstrap targets mirror the final dissertation:
-    # TE, DE, and the three mediator-related path-specific intervention effects.
-    # IE_total remains available in the point-estimate object for diagnostics.
+    
+    # PE bootstrap reports the total, direct, and total indirect effects,
+    # alongside the three path-specific components and their RMTL analogues.
+    # Each metric's SE is computed from the same joint bootstrap replicates;
+    # the shared engine reports Wald confidence intervals.
     metrics <- c(
         "TE",
         "DE",
+        "IE_total",
         "P_A_T2_Y",
         "P_A_T1_Y",
         "P_A_T1_T2_Y",
         "TE_RMTL",
         "DE_RMTL",
+        "IE_total_RMTL",
         "P_A_T2_Y_RMTL",
         "P_A_T1_Y_RMTL",
         "P_A_T1_T2_Y_RMTL"
     )
-
+    
     .bootstrap_mims_wald(
         dat = dat,
         estimator = mims_s2tem_pe_point,
@@ -567,14 +570,14 @@ bootstrap_mims_tem <- function(
     if (!exists(".bootstrap_mims_wald", mode = "function")) {
         stop("Source mims_bootstrap_wald_v1.R before calling this function.")
     }
-
+    
     scale <- match.arg(scale)
-
+    
     metrics <- c(
         "DE", "IE", "TE",
         "DE_RMTL", "IE_RMTL", "TE_RMTL"
     )
-
+    
     .bootstrap_mims_wald(
         dat = dat,
         estimator = mims_tem_point,
