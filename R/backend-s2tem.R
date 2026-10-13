@@ -240,7 +240,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         max_grid_points = 200L
 ) {
     dat <- .im2_prepare_eff_vars(dat)
-
+    
     tau <- sort(unique(as.numeric(tau)))
     basec <- intersect(basec, names(dat))
     v_chunk_size <- as.integer(v_chunk_size)
@@ -250,12 +250,12 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     }
     if (v_chunk_size <= 0L) stop("v_chunk_size must be a positive integer.")
     if (max_grid_points < 10L) stop("max_grid_points must be at least 10.")
-
+    
     if (!requireNamespace("survival", quietly = TRUE)) stop("Package 'survival' is required.")
     if (!requireNamespace("mstate", quietly = TRUE)) stop("Package 'mstate' is required.")
-
+    
     safe_exp <- function(x) exp(pmin(pmax(x, -50), 50))
-
+    
     H_vec_at <- function(Hdf, tvec) {
         if (nrow(Hdf) == 0) return(rep(0, length(tvec)))
         idx <- findInterval(tvec, Hdf$time)
@@ -264,22 +264,37 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         out[ok] <- Hdf$Haz[idx[ok]]
         out
     }
-
+    
     .get_coef_any <- function(b, cand_names) {
         hit <- cand_names[cand_names %in% names(b)]
         if (length(hit) == 0) return(0)
         unname(b[[hit[1]]])
     }
-
+    
     .escape_regex <- function(x) {
         gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x)
     }
-
-    .pick_base_terms <- function(v, cols) {
-        pat <- paste0("^", .escape_regex(v), "([0-9]+)?\\.[12345]$")
-        grep(pat, cols, value = TRUE)
+    
+    .pick_base_terms <- function(v, cols, all_basec = character(0)) {
+        # expand.covs() uses v.1 for numerical covariates and may use
+        # vLevel.1 (e.g., sexMale.1) for factors. Match both formats.
+        pat <- paste0("^", .escape_regex(v), ".*\\.[12345]$")
+        out <- grep(pat, cols, value = TRUE)
+        
+        # Avoid prefix collisions, e.g. U1 must not select U10.1,
+        # and age must not select ageGroupYes.3 when ageGroup is
+        # another baseline covariate.
+        longer_vars <- all_basec[nchar(all_basec) > nchar(v)]
+        if (length(longer_vars) > 0L && length(out) > 0L) {
+            for (w in longer_vars) {
+                pat_w <- paste0("^", .escape_regex(w), ".*\\.[12345]$")
+                out <- out[!grepl(pat_w, out)]
+            }
+        }
+        
+        out
     }
-
+    
     .trim_H <- function(Hdf, tau_max_use) {
         Hdf <- Hdf[, c("time", "Haz"), drop = FALSE]
         Hdf <- Hdf[is.finite(Hdf$time), , drop = FALSE]
@@ -291,11 +306,11 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         }
         Hdf
     }
-
+    
     .thin_H_adaptive <- function(Hdf, max_pts = 200) {
         n <- nrow(Hdf)
         if (n <= max_pts) return(Hdf)
-
+        
         if ("Haz" %in% names(Hdf)) {
             haz_col <- "Haz"
         } else if ("hazard" %in% names(Hdf)) {
@@ -303,30 +318,30 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         } else {
             stop(".thin_H_adaptive: could not find a 'Haz' or 'hazard' column.")
         }
-
+        
         Haz_vals <- Hdf[[haz_col]]
         Haz_min  <- Haz_vals[1]
         Haz_max  <- Haz_vals[n]
-
+        
         if (Haz_max <= Haz_min) {
             idx <- unique(c(1L, round(seq(1, n, length.out = max_pts)), n))
             return(Hdf[sort(unique(idx)), , drop = FALSE])
         }
-
+        
         target_Haz <- seq(Haz_min, Haz_max, length.out = max_pts)
         idx <- vapply(target_Haz, function(h) which.min(abs(Haz_vals - h)), integer(1))
         idx <- sort(unique(c(1L, idx, n)))
         Hdf[idx, , drop = FALSE]
     }
-
+    
     # ----- 1) five-transition multistate Cox model -----
     trans <- mstate::transMat(
         x = list(c(2, 4), c(3, 4), c(4), c()),
         names = c("start", "M1", "M2", "death")
     )
-
+    
     covs_df <- c("A", "t_med1_eff", "t_med2_eff", basec)
-
+    
     mstate_dat <- mstate::msprep(
         time   = c(NA, "t_med1_eff", "t_med2_eff", "t_out"),
         status = c(NA, "mevent1_eff", "mevent2_eff", "yevent"),
@@ -334,19 +349,20 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         trans  = trans,
         keep   = covs_df
     )
-
+    
     mstate_dat <- mstate::expand.covs(
         mstate_dat, covs_df,
         append = TRUE, longnames = FALSE
     )
-
+    
     base_terms <- character(0)
     if (length(basec) > 0) {
         base_terms <- unique(unlist(lapply(
-            basec, .pick_base_terms, cols = colnames(mstate_dat)
+            basec, .pick_base_terms,
+            cols = colnames(mstate_dat), all_basec = basec
         )))
     }
-
+    
     rhs_terms <- c(
         paste0("A.", 1:5),
         "t_med1_eff.3", "t_med1_eff.4", "t_med2_eff.5",
@@ -358,31 +374,31 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
                        "A.4:t_med1_eff.4",
                        "A.5:t_med2_eff.5")
     }
-
+    
     fml <- stats::as.formula(
         paste0("survival::Surv(Tstart, Tstop, status) ~ ",
                paste(rhs_terms, collapse = " + "),
                " + strata(trans)")
     )
-
+    
     fit <- survival::coxph(
         fml, data = mstate_dat,
         method = bh_method, x = TRUE, model = TRUE
     )
-
+    
     b <- stats::coef(fit)
     if (length(b) == 0) stop("coxph estimated no coefficients.")
     if (anyNA(b)) {
         if (verbose) warning(sprintf("coxph produced %d NA coefficients; they were set to 0.", sum(is.na(b))))
         b[is.na(b)] <- 0
     }
-
+    
     # ----- 2) baseline cumulative hazards + thinning -----
     mf <- stats::model.frame(fit)
     need_cols <- setdiff(colnames(mf), c("(weights)", "(offset)"))
     need_cols <- setdiff(need_cols, "Surv(Tstart, Tstop, status)")
     need_cols <- intersect(need_cols, colnames(mstate_dat))
-
+    
     newd0 <- mstate_dat[0, need_cols, drop = FALSE]
     newd0 <- newd0[rep(1, 5), , drop = FALSE]
     newd0[,] <- 0
@@ -390,25 +406,25 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     newd0$strata <- 1:5
     attr(newd0, "trans") <- trans
     class(newd0) <- c("msdata", "data.frame")
-
+    
     Haz0 <- mstate::msfit(fit, newdata = newd0, trans = trans)$Haz
     tau_max_use <- max(tau)
-
+    
     H12_raw <- .trim_H(subset(Haz0, trans == 1), tau_max_use)
     H14_raw <- .trim_H(subset(Haz0, trans == 2), tau_max_use)
     H23_raw <- .trim_H(subset(Haz0, trans == 3), tau_max_use)
     H24_raw <- .trim_H(subset(Haz0, trans == 4), tau_max_use)
     H34_raw <- .trim_H(subset(Haz0, trans == 5), tau_max_use)
-
+    
     n_outer_orig <- nrow(H12_raw)
     n_inner_orig <- nrow(H23_raw)
-
+    
     H12 <- .thin_H_adaptive(H12_raw, max_grid_points)
     H14 <- .thin_H_adaptive(H14_raw, max_grid_points)
     H23 <- .thin_H_adaptive(H23_raw, max_grid_points)
     H24 <- .thin_H_adaptive(H24_raw, max_grid_points)
     H34 <- .thin_H_adaptive(H34_raw, max_grid_points)
-
+    
     if (verbose) {
         cat(sprintf(
             "[grid thin] H12:%d->%d H14:%d->%d H23:%d->%d H24:%d->%d H34:%d->%d (max_grid_points=%d)\\n",
@@ -420,37 +436,37 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
             max_grid_points
         ))
     }
-
+    
     if (nrow(H12) < 2) stop("H12 time grid is too short (<2).")
     if (nrow(H23) < 2) stop("H23 time grid is too short (<2).")
-
+    
     time1    <- H12$time
     u1_left  <- time1[-length(time1)]
     u1_right <- time1[-1]
     du1_base <- diff(time1)
     if (any(du1_base <= 0)) stop("H12 time grid is not strictly increasing.")
-
+    
     H12_u1 <- H12$Haz[-length(H12$Haz)]
     H14_u1 <- H_vec_at(H14, u1_left)
     H23_u1 <- H_vec_at(H23, u1_left)
     H24_u1 <- H_vec_at(H24, u1_left)
-
+    
     h12_base <- diff(H12$Haz) / du1_base
     w1_full  <- diff(H12$Haz)
-
+    
     time2    <- H23$time
     u2_left  <- time2[-length(time2)]
     u2_right <- time2[-1]
     du2_base <- diff(time2)
     if (any(du2_base <= 0)) stop("H23 time grid is not strictly increasing.")
-
+    
     H23_u2 <- H23$Haz[-length(H23$Haz)]
     H24_u2 <- H_vec_at(H24, u2_left)
     H34_u2 <- H_vec_at(H34, u2_left)
-
+    
     h23_base <- diff(H23$Haz) / du2_base
     w2_full  <- diff(H23$Haz)
-
+    
     # ----- 3) design matrices and intervention-specific multipliers -----
     Xlist <- .build_all_X_2med(
         dat = dat, trans = trans,
@@ -458,12 +474,12 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     )
     X1 <- Xlist$X1; X2 <- Xlist$X2; X3 <- Xlist$X3
     X4 <- Xlist$X4; X5 <- Xlist$X5
-
+    
     colA1 <- "A.1"; colA2 <- "A.2"; colA3 <- "A.3"
     colA4 <- "A.4"; colA5 <- "A.5"
     colM1_3 <- "t_med1_eff.3"; colM1_4 <- "t_med1_eff.4"
     colM2_5 <- "t_med2_eff.5"
-
+    
     set_A_5trans <- function(X, which_col, Aval) {
         for (nm in c(colA1, colA2, colA3, colA4, colA5)) {
             if (nm %in% colnames(X)) X[, nm] <- 0
@@ -471,7 +487,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         if (which_col %in% colnames(X)) X[, which_col] <- Aval
         X
     }
-
+    
     X3_const <- X3
     for (nm in c(colM1_3, "A.3:t_med1_eff.3", "t_med1_eff.3:A.3")) {
         if (nm %in% colnames(X3_const)) X3_const[, nm] <- 0
@@ -484,15 +500,15 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     for (nm in c(colM2_5, "A.5:t_med2_eff.5", "t_med2_eff.5:A.5")) {
         if (nm %in% colnames(X5_const)) X5_const[, nm] <- 0
     }
-
+    
     beta_m1_23 <- if (colM1_3 %in% names(b)) unname(b[[colM1_3]]) else 0
     beta_m1_24 <- if (colM1_4 %in% names(b)) unname(b[[colM1_4]]) else 0
     beta_m2_34 <- if (colM2_5 %in% names(b)) unname(b[[colM2_5]]) else 0
-
+    
     beta_int_23 <- if (EMint) .get_coef_any(b, c("A.3:t_med1_eff.3", "t_med1_eff.3:A.3")) else 0
     beta_int_24 <- if (EMint) .get_coef_any(b, c("A.4:t_med1_eff.4", "t_med1_eff.4:A.4")) else 0
     beta_int_34 <- if (EMint) .get_coef_any(b, c("A.5:t_med2_eff.5", "t_med2_eff.5:A.5")) else 0
-
+    
     eta12_astar <- as.numeric(set_A_5trans(X1, colA1, astar) %*% b)
     eta12_a     <- as.numeric(set_A_5trans(X1, colA1, a)     %*% b)
     eta14_astar <- as.numeric(set_A_5trans(X2, colA2, astar) %*% b)
@@ -503,21 +519,21 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     eta24c_a     <- as.numeric(set_A_5trans(X4_const, colA4, a)     %*% b)
     eta34c_astar <- as.numeric(set_A_5trans(X5_const, colA5, astar) %*% b)
     eta34c_a     <- as.numeric(set_A_5trans(X5_const, colA5, a)     %*% b)
-
+    
     e12_astar <- safe_exp(eta12_astar); e12_a <- safe_exp(eta12_a)
     e14_astar <- safe_exp(eta14_astar); e14_a <- safe_exp(eta14_a)
     e23c_astar <- safe_exp(eta23c_astar); e23c_a <- safe_exp(eta23c_a)
     e24c_astar <- safe_exp(eta24c_astar); e24c_a <- safe_exp(eta24c_a)
     e34c_astar <- safe_exp(eta34c_astar); e34c_a <- safe_exp(eta34c_a)
-
+    
     N <- nrow(dat)
-
+    
     E12  <- cbind(e12_astar, e12_astar, e12_a)
     E14  <- cbind(e14_astar, e14_a,     e14_a)
     E23c <- cbind(e23c_astar, e23c_astar, e23c_a)
     E24c <- cbind(e24c_astar, e24c_a,     e24c_a)
     E34c <- cbind(e34c_astar, e34c_a,     e34c_a)
-
+    
     alpha23_vec <- c(beta_m1_23 + beta_int_23 * astar,
                      beta_m1_23 + beta_int_23 * astar,
                      beta_m1_23 + beta_int_23 * a)
@@ -527,32 +543,32 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     alpha34_vec <- c(beta_m2_34 + beta_int_34 * astar,
                      beta_m2_34 + beta_int_34 * a,
                      beta_m2_34 + beta_int_34 * a)
-
+    
     m1 <- length(u1_left)
-
+    
     # ----- 4) tau-independent and tau-specific caches used by GE -----
     k23_u1_all <- safe_exp(outer(u1_left, alpha23_vec))
     k24_u1_all <- safe_exp(outer(u1_left, alpha24_vec))
     k34_u2_all <- safe_exp(outer(u2_left, alpha34_vec))
-
+    
     H12_tau <- H_vec_at(H12, tau)
     H14_tau <- H_vec_at(H14, tau)
     H23_tau <- H_vec_at(H23, tau)
     H24_tau <- H_vec_at(H24, tau)
     H34_tau <- H_vec_at(H34, tau)
-
+    
     dH23_tau_u1 <- outer(H23_tau, H23_u1, "-")
     dH24_tau_u1 <- outer(H24_tau, H24_u1, "-")
     dH23_tau_u1[dH23_tau_u1 < 0] <- 0
     dH24_tau_u1[dH24_tau_u1 < 0] <- 0
-
+    
     q34_tau_u2 <- outer(H34_tau, H34_u2, "-")
     q34_tau_u2[q34_tau_u2 < 0] <- 0
-
+    
     idx2_after_u1 <- vector("list", m1)
     q23_from_u1   <- vector("list", m1)
     q24_from_u1   <- vector("list", m1)
-
+    
     for (ii in seq_len(m1)) {
         idx2 <- which(u2_left > u1_left[ii])
         idx2_after_u1[[ii]] <- idx2
@@ -564,7 +580,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
             q24_from_u1[[ii]] <- numeric(0)
         }
     }
-
+    
     build_w1_tau <- function(tt) {
         imax <- sum(u1_left < tt)
         if (imax <= 0L) return(numeric(0))
@@ -583,20 +599,20 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         }
         w
     }
-
+    
     w1_tau_list <- lapply(tau, build_w1_tau)
     w2_tau_list <- lapply(tau, build_w2_tau)
-
+    
     precomp_S0   <- vector("list", m1)
     precomp_e23  <- vector("list", m1)
     precomp_e24  <- vector("list", m1)
-
+    
     for (ii in seq_len(m1)) {
         precomp_S0[[ii]] <- exp(-(H12_u1[ii] * E12 + H14_u1[ii] * E14))
         precomp_e23[[ii]] <- sweep(E23c, 2L, k23_u1_all[ii, ], "*")
         precomp_e24[[ii]] <- sweep(E24c, 2L, k24_u1_all[ii, ], "*")
     }
-
+    
     settings <- list(
         v_chunk_size = v_chunk_size,
         max_grid_points = max_grid_points,
@@ -605,7 +621,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
         n_outer_grid_original = n_outer_orig,
         n_inner_grid_original = n_inner_orig
     )
-
+    
     context <- list(
         tau = tau,
         N = N,
@@ -637,7 +653,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
             w2_tau_list = w2_tau_list
         )
     )
-
+    
     structure(list(
         dat = dat,
         tau = tau,
@@ -686,54 +702,54 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     if (!inherits(backend, "mims_s2tem_backend")) {
         stop("backend must be created by .fit_s2tem_backend().")
     }
-
+    
     tau <- backend$tau
     z <- backend$ge_cache
     N <- z$N
-
+    
     calc_all_psi_tau <- function(k) {
         w1_tau <- z$w1_tau_list[[k]]
         if (!length(w1_tau)) return(c(0, 0, 0))
-
+        
         jmax_global <- length(z$w2_tau_list[[k]])
-
+        
         P0 <- exp(-(z$H12_tau[k] * z$E12 + z$H14_tau[k] * z$E14))
         P1 <- matrix(0, nrow = N, ncol = 3)
         P2 <- matrix(0, nrow = N, ncol = 3)
-
+        
         n_outer <- length(w1_tau)
-
+        
         for (ii in seq_len(n_outer)) {
             w1 <- w1_tau[ii]
             if (w1 <= 0) next
-
+            
             S0_u1  <- z$precomp_S0[[ii]]
             e23_u1 <- z$precomp_e23[[ii]]
             e24_u1 <- z$precomp_e24[[ii]]
             haz12_w1 <- z$E12 * w1
-
+            
             S1_ut <- exp(-(
                 z$dH23_tau_u1[k, ii] * e23_u1 +
-                z$dH24_tau_u1[k, ii] * e24_u1
+                    z$dH24_tau_u1[k, ii] * e24_u1
             ))
             P1 <- P1 + S0_u1 * haz12_w1 * S1_ut
-
+            
             idx2_full <- z$idx2_after_u1[[ii]]
             if (!length(idx2_full) || jmax_global <= 0L) next
-
+            
             keep_n <- sum(idx2_full <= jmax_global)
             if (keep_n <= 0L) next
-
+            
             idx2    <- idx2_full[seq_len(keep_n)]
             q23_all <- z$q23_from_u1[[ii]][seq_len(keep_n)]
             q24_all <- z$q24_from_u1[[ii]][seq_len(keep_n)]
             q34_all <- z$q34_tau_u2[k, idx2]
             wc_all  <- z$w2_tau_list[[k]][idx2]
-
+            
             J <- length(idx2)
             inner_sum <- matrix(0, nrow = N, ncol = 3)
             mem_cells <- as.numeric(N) * J
-
+            
             if (mem_cells <= 5e7) {
                 for (r in 1:3) {
                     term23 <- outer(e23_u1[, r], q23_all)
@@ -750,7 +766,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
                     q24c <- q24_all[loc]
                     q34c <- q34_all[loc]
                     wc   <- wc_all[loc]
-
+                    
                     for (r in 1:3) {
                         k34c_r <- z$k34_u2_all[idx2[loc], r]
                         term23 <- outer(e23_u1[, r], q23c)
@@ -761,18 +777,18 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
                     }
                 }
             }
-
+            
             P2 <- P2 + S0_u1 * haz12_w1 * e23_u1 * inner_sum
         }
-
+        
         S <- P0 + P1 + P2
         S <- pmin(pmax(S, 0), 1)
         colMeans(1 - S)
     }
-
+    
     psi_mat <- t(vapply(seq_along(tau), calc_all_psi_tau, numeric(3)))
     colnames(psi_mat) <- c("psi00", "psi10", "psi11")
-
+    
     out <- data.frame(
         tau = tau,
         psi00 = psi_mat[, "psi00"],
@@ -782,23 +798,23 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
     out$S00 <- 1 - out$psi00
     out$S10 <- 1 - out$psi10
     out$S11 <- 1 - out$psi11
-
+    
     out$DE <- out$psi10 - out$psi00
     out$IE <- out$psi11 - out$psi10
     out$TE <- out$psi11 - out$psi00
-
+    
     if (scale == "survival") {
         out$DE <- -out$DE
         out$IE <- -out$IE
         out$TE <- -out$TE
     }
-
+    
     # Restore the legacy column order before adding RMTL columns.
     out <- out[, c("tau", "DE", "IE", "TE",
                    "psi00", "psi10", "psi11",
                    "S00", "S10", "S11")]
     out <- add_rmtl_to_output(out, integration = "trapezoid")
-
+    
     if (keep_fit_objects) {
         attr(out, "fit") <- backend$fit
         attr(out, "mstate_dat") <- backend$mstate_dat
@@ -864,14 +880,14 @@ verify_s2tem_ge_equivalence <- function(
         verbose = FALSE, keep_fit_objects = FALSE,
         v_chunk_size = v_chunk_size, max_grid_points = max_grid_points
     )
-
+    
     cols <- intersect(
         c("psi00", "psi10", "psi11", "DE", "IE", "TE",
           "rmtl00", "rmtl10", "rmtl11", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
         intersect(names(old), names(new))
     )
     diffs <- vapply(cols, function(nm) max(abs(old[[nm]] - new[[nm]]), na.rm = TRUE), numeric(1))
-
+    
     list(
         passed = all(diffs <= tolerance),
         tolerance = tolerance,
