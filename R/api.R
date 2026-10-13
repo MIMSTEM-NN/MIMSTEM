@@ -3,12 +3,12 @@
 .mims_validate_public_input <- function(dat, tau, basec, a, astar) {
     if (!is.data.frame(dat)) stop("`dat` must be a data.frame.", call. = FALSE)
     if (nrow(dat) < 2L) stop("`dat` must contain at least two subjects.", call. = FALSE)
-
+    
     tau <- as.numeric(tau)
     if (!length(tau) || any(!is.finite(tau)) || any(tau <= 0)) {
         stop("`tau` must contain positive finite evaluation times.", call. = FALSE)
     }
-
+    
     if (is.null(basec)) basec <- character(0)
     if (!is.character(basec) || anyNA(basec) || anyDuplicated(basec)) {
         stop("`basec` must be a character vector of unique baseline covariate names.", call. = FALSE)
@@ -21,7 +21,7 @@
             call. = FALSE
         )
     }
-
+    
     if (!"A" %in% names(dat)) stop("`dat` must contain exposure column `A`.", call. = FALSE)
     A_num <- suppressWarnings(as.numeric(as.character(dat$A)))
     if (anyNA(A_num) || !all(A_num %in% c(0, 1))) {
@@ -30,7 +30,7 @@
     if (!all(c(0, 1) %in% unique(A_num))) {
         stop("Both exposure groups A=0 and A=1 are required.", call. = FALSE)
     }
-
+    
     if (length(a) != 1L || length(astar) != 1L ||
         anyNA(c(a, astar)) || any(!c(a, astar) %in% c(0, 1))) {
         stop("`a` and `astar` must each be either 0 or 1.", call. = FALSE)
@@ -38,7 +38,7 @@
     if (identical(as.numeric(a), as.numeric(astar))) {
         warning("`a` and `astar` are identical; all exposure contrasts should be zero.", call. = FALSE)
     }
-
+    
     invisible(TRUE)
 }
 
@@ -48,9 +48,9 @@
         MIMS_TEM = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
         MIMS_S2TEM_GE = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
         MIMS_S2TEM_PE = c(
-            "TE", "DE", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y",
-            "TE_RMTL", "DE_RMTL", "P_A_T2_Y_RMTL", "P_A_T1_Y_RMTL",
-            "P_A_T1_T2_Y_RMTL"
+            "TE", "DE", "IE_total", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y",
+            "TE_RMTL", "DE_RMTL", "IE_total_RMTL", "P_A_T2_Y_RMTL",
+            "P_A_T1_Y_RMTL", "P_A_T1_T2_Y_RMTL"
         ),
         stop("Unknown MIMS method.")
     )
@@ -62,7 +62,7 @@
     if (length(miss)) {
         stop("Internal result is missing: ", paste(miss, collapse = ", "), call. = FALSE)
     }
-
+    
     rows <- do.call(rbind, lapply(metrics, function(metric) {
         data.frame(
             tau = point$tau,
@@ -74,7 +74,7 @@
             stringsAsFactors = FALSE
         )
     }))
-
+    
     if (!is.null(boot)) {
         ints <- boot$intervals
         key_rows <- paste(rows$tau, rows$estimand, sep = "\r")
@@ -85,7 +85,7 @@
         rows$lower[ok] <- ints$lower[ix[ok]]
         rows$upper[ok] <- ints$upper[ix[ok]]
     }
-
+    
     rows$effect_type <- ifelse(grepl("_RMTL$", rows$estimand), "RMTL", "risk")
     rownames(rows) <- NULL
     rows
@@ -93,7 +93,7 @@
 
 .mims_make_fit <- function(method, call, point, boot, settings) {
     effects <- .mims_make_effect_table(point, method, boot)
-
+    
     endpoint_names <- switch(
         method,
         MIMS_TEM = intersect(c("tau", "psi00", "psi10", "psi11", "S00", "S10", "S11",
@@ -103,14 +103,14 @@
         MIMS_S2TEM_PE = intersect(c("tau", "psi0000", "psi1000", "psi1100", "psi1110", "psi1111",
                                     "S0000", "S1000", "S1100", "S1110", "S1111"), names(point))
     )
-
+    
     diagnostics <- list()
     if (!is.null(boot)) diagnostics$bootstrap <- boot$diagnostics
     pd <- attr(point, "path_diagnostics", exact = TRUE)
     if (!is.null(pd)) diagnostics$path <- pd
     controls <- attr(point, "controls", exact = TRUE)
     if (!is.null(controls)) diagnostics$controls <- controls
-
+    
     out <- list(
         call = call,
         method = method,
@@ -182,7 +182,7 @@ mims_tem <- function(
     cl <- match.call()
     scale <- match.arg(scale)
     .mims_validate_public_input(dat, tau, basec, a, astar)
-
+    
     if (isTRUE(bootstrap)) {
         boot <- bootstrap_mims_tem(
             dat = dat, tau = tau, basec = basec, a = a, astar = astar,
@@ -202,7 +202,7 @@ mims_tem <- function(
             verbose = verbose, keep_fit_objects = keep_fit_objects
         )
     }
-
+    
     .mims_make_fit(
         method = "MIMS_TEM", call = cl, point = point, boot = boot,
         settings = list(
@@ -248,7 +248,7 @@ mims_s2tem_ge <- function(
     cl <- match.call()
     scale <- match.arg(scale)
     .mims_validate_public_input(dat, tau, basec, a, astar)
-
+    
     if (isTRUE(bootstrap)) {
         boot <- bootstrap_mims_s2tem_ge(
             dat = dat, tau = tau, basec = basec, a = a, astar = astar,
@@ -271,7 +271,7 @@ mims_s2tem_ge <- function(
             v_chunk_size = v_chunk_size, max_grid_points = max_grid_points
         )
     }
-
+    
     .mims_make_fit(
         method = "MIMS_S2TEM_GE", call = cl, point = point, boot = boot,
         settings = list(
@@ -297,9 +297,10 @@ mims_s2tem_ge <- function(
 #' @param t1_coupling Currently only `"rank_preserving"` is implemented.
 #' @param subject_chunk_size Subject block size for path-kernel calculations.
 #' @return An object inheriting from `mims_fit`. The main effect table reports
-#'   TE, DE, `P_A_T2_Y`, `P_A_T1_Y`, and `P_A_T1_T2_Y` (and their RMTL
-#'   analogues). `IE_total` remains available in `$point` for decomposition
-#'   checks but is not duplicated in the main effect table.
+#'   TE, DE, `IE_total`, `P_A_T2_Y`, `P_A_T1_Y`, and `P_A_T1_T2_Y`
+#'   (and their RMTL analogues). `IE_total` is also available in `$point`
+#'   for decomposition checks, and its bootstrap SE and Wald confidence
+#'   interval are included in the main effect table.
 #' @export
 mims_s2tem_pe <- function(
         dat,
@@ -328,11 +329,11 @@ mims_s2tem_pe <- function(
     scale <- match.arg(scale)
     primary_rule <- match.arg(primary_rule)
     .mims_validate_public_input(dat, tau, basec, a, astar)
-
+    
     if (!identical(t1_coupling, "rank_preserving")) {
         stop("Only `t1_coupling = \"rank_preserving\"` is currently implemented.", call. = FALSE)
     }
-
+    
     if (isTRUE(bootstrap)) {
         boot <- bootstrap_mims_s2tem_pe(
             dat = dat, tau = tau, basec = basec, a = a, astar = astar,
@@ -361,7 +362,7 @@ mims_s2tem_pe <- function(
             subject_chunk_size = subject_chunk_size
         )
     }
-
+    
     .mims_make_fit(
         method = "MIMS_S2TEM_PE", call = cl, point = point, boot = boot,
         settings = list(
