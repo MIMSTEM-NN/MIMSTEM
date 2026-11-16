@@ -1,6 +1,6 @@
 # ============================================================
 # MIMS unified nonparametric bootstrap engine -- Wald CI
-# Version: 2026-09-17
+# Version: 2026-11-14 (PM Delta-Wald extension)
 #
 # Purpose
 #   One bootstrap engine for:
@@ -12,6 +12,7 @@
 #   Individual-level nonparametric bootstrap.
 #   SE_boot = SD(theta_hat^b)
 #   Wald CI = theta_hat +/- z_(1-alpha/2) * SE_boot
+#   PM = indirect / total; Delta-method SE uses PAIRED bootstrap covariance.
 #
 # Notes
 #   * Default stratified = FALSE to match an ordinary subject-level
@@ -115,6 +116,63 @@
 }
 
 
+# Ratio specifications are derived from joint bootstrap replicates without
+# refitting the point estimator or changing the sampling scheme.
+.mims_boot_validate_ratios <- function(ratio_specs, metrics) {
+    if (is.null(ratio_specs)) {
+        return(data.frame(
+            metric = character(), numerator = character(),
+            denominator = character(), stringsAsFactors = FALSE
+        ))
+    }
+    required <- c("metric", "numerator", "denominator")
+    if (!is.data.frame(ratio_specs) ||
+        !all(required %in% names(ratio_specs))) {
+        stop("ratio_specs must be a data.frame with metric, numerator, denominator.")
+    }
+    specs <- ratio_specs[, required, drop = FALSE]
+    if (anyNA(specs) || !all(vapply(specs, is.character, logical(1))) ||
+        any(!nzchar(as.matrix(specs))) || anyDuplicated(specs$metric) ||
+        any(specs$metric %in% metrics)) {
+        stop("ratio_specs has missing, duplicate or invalid derived metric names.")
+    }
+    absent <- setdiff(unique(c(specs$numerator, specs$denominator)), metrics)
+    if (length(absent)) {
+        stop("ratio_specs needs jointly bootstrapped metrics: ",
+             paste(absent, collapse = ", "))
+    }
+    specs
+}
+
+.mims_boot_ratio_specs_tem_ge <- function(scale = "risk") {
+    data.frame(
+        metric = c(paste0("PM_", scale), "PM_RMTL"),
+        numerator = c("IE", "IE_RMTL"),
+        denominator = c("TE", "TE_RMTL"),
+        stringsAsFactors = FALSE
+    )
+}
+
+.mims_boot_ratio_specs_pe <- function(scale = "risk") {
+    data.frame(
+        metric = c(
+            paste0("PM_path_", scale), paste0("prop_T2_", scale),
+            paste0("prop_T1_", scale), paste0("prop_T1_T2_", scale),
+            "PM_path_RMTL", "prop_T2_RMTL", "prop_T1_RMTL", "prop_T1_T2_RMTL"
+        ),
+        numerator = c(
+            "IE_total", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y",
+            "IE_total_RMTL", "P_A_T2_Y_RMTL", "P_A_T1_Y_RMTL",
+            "P_A_T1_T2_Y_RMTL"
+        ),
+        denominator = c(
+            rep("TE", 4L), rep("TE_RMTL", 4L)
+        ),
+        stringsAsFactors = FALSE
+    )
+}
+
+
 .bootstrap_mims_wald <- function(
         dat,
         estimator,
@@ -129,7 +187,9 @@
         reset_id = TRUE,
         min_success_fraction = 0.80,
         keep_replicates = FALSE,
-        verbose = TRUE
+        verbose = TRUE,
+        ratio_specs = NULL,
+        ratio_epsilon = 1e-6
 ) {
     if (!is.data.frame(dat) || nrow(dat) < 2L) {
         stop("dat must be a subject-level data.frame with at least two rows.")
@@ -154,6 +214,11 @@
     B <- .mims_boot_integer(B, "B", 2L)
     seed <- .mims_boot_integer(seed, "seed", 0L)
     .mims_boot_validate_ci(conf_level)
+    ratio_specs <- .mims_boot_validate_ratios(ratio_specs, metrics)
+    if (length(ratio_epsilon) != 1L || !is.numeric(ratio_epsilon) ||
+        !is.finite(ratio_epsilon) || ratio_epsilon < 0) {
+        stop("ratio_epsilon must be one finite nonnegative numeric value.")
+    }
     
     if (length(stratified) != 1L || !is.logical(stratified) || is.na(stratified)) {
         stop("stratified must be TRUE or FALSE.")
@@ -321,6 +386,84 @@
     }
     
     intervals <- do.call(rbind, interval_rows)
+
+    # Add ratios using the PAIRED bootstrap covariance of (numerator, total).
+    # This is the first-order Delta SE, NOT sd(IE_b/TE_b) and NOT a percentile CI.
+    # The original-sample ratio is the Wald interval center.
+    ratio_diag_rows <- list()
+    ratio_interval_rows <- list()
+    if (nrow(ratio_specs) > 0L) {
+        row_id <- 0L
+        for (j in seq_len(nrow(ratio_specs))) {
+            ratio_name <- ratio_specs$metric[j]
+            num_name <- ratio_specs$numerator[j]
+            den_name <- ratio_specs$denominator[j]
+            mi <- match(num_name, metrics)
+            md <- match(den_name, metrics)
+
+            # Expose point estimates without changing the point estimator itself.
+            pn <- as.numeric(point[[num_name]])
+            pd <- as.numeric(point[[den_name]])
+            good_point <- is.finite(pn) & is.finite(pd) &
+                (abs(pd) > ratio_epsilon)
+            ratio_points <- rep(NA_real_, nrow(point))
+            ratio_points[good_point] <- pn[good_point] / pd[good_point]
+            point[[ratio_name]] <- ratio_points
+
+            for (k in seq_len(K)) {
+                row_id <- row_id + 1L
+                num0 <- point_extract[[num_name]][k]
+                den0 <- point_extract[[den_name]][k]
+                is_defined <- is.finite(num0) && is.finite(den0) &&
+                    abs(den0) > ratio_epsilon
+                ratio0 <- if (is_defined) num0 / den0 else NA_real_
+                ratio_se <- ratio_lo <- ratio_hi <- NA_real_
+                paired_cov <- NA_real_
+                den_cross_zero <- NA
+                b_pair <- n_ok
+
+                if (n_ok >= 2L) {
+                    boot_num <- as.numeric(arr[k, mi, ok_index])
+                    boot_den <- as.numeric(arr[k, md, ok_index])
+                    den_cross_zero <- min(boot_den) <= 0 && max(boot_den) >= 0
+                    paired_cov <- stats::cov(boot_num, boot_den)
+
+                    if (enough && is_defined) {
+                        sigma <- stats::cov(cbind(boot_num, boot_den))
+                        grad <- c(1 / den0, -num0 / den0^2)
+                        delta_var <- as.numeric(crossprod(grad, sigma %*% grad))
+                        # Tiny negative values can arise from floating point roundoff.
+                        if (is.finite(delta_var) && delta_var >= -1e-12) {
+                            ratio_se <- sqrt(max(0, delta_var))
+                            ratio_lo <- ratio0 - zcrit * ratio_se
+                            ratio_hi <- ratio0 + zcrit * ratio_se
+                        }
+                    }
+                }
+                ratio_interval_rows[[row_id]] <- data.frame(
+                    tau = tau[k], metric = ratio_name, estimate = ratio0,
+                    se_boot = ratio_se, lower = ratio_lo, upper = ratio_hi,
+                    conf_level = conf_level, stringsAsFactors = FALSE
+                )
+                ratio_diag_rows[[row_id]] <- data.frame(
+                    tau = tau[k], metric = ratio_name,
+                    numerator = num_name, denominator = den_name,
+                    denominator_estimate = den0,
+                    denominator_near_zero = !is_defined,
+                    denominator_bootstrap_crosses_zero = den_cross_zero,
+                    B_valid_paired = b_pair,
+                    paired_covariance = paired_cov,
+                    stringsAsFactors = FALSE
+                )
+            }
+        }
+        intervals <- rbind(intervals, do.call(rbind, ratio_interval_rows))
+    }
+    ratio_diagnostics <- if (length(ratio_diag_rows)) {
+        do.call(rbind, ratio_diag_rows)
+    } else {
+        data.frame()
+    }
     
     diagnostics <- list(
         B_total = B,
@@ -335,6 +478,9 @@
         exposure = exposure,
         ci_method = "wald_bootstrap_se",
         conf_level = conf_level,
+        ratio_ci_method = "paired_bootstrap_covariance_delta_wald",
+        ratio_epsilon = ratio_epsilon,
+        ratio_diagnostics = ratio_diagnostics,
         replicate_status = status_df,
         sample_errors = utils::head(status_df$error[status_df$status == "failed"], 10L),
         note = paste(
@@ -424,6 +570,7 @@ bootstrap_mims_s2tem_ge <- function(
         ),
         tau = tau,
         metrics = metrics,
+        ratio_specs = .mims_boot_ratio_specs_tem_ge(scale),
         B = B,
         seed = seed,
         conf_level = conf_level,
@@ -474,6 +621,7 @@ bootstrap_mims_s2tem_pe <- function(
     # alongside the three path-specific components and their RMTL analogues.
     # Each metric's SE is computed from the same joint bootstrap replicates;
     # the shared engine reports Wald confidence intervals.
+    # Total/path proportions get Delta-Wald CIs from paired IE/path and TE covariance.
     metrics <- c(
         "TE",
         "DE",
@@ -511,6 +659,7 @@ bootstrap_mims_s2tem_pe <- function(
         ),
         tau = tau,
         metrics = metrics,
+        ratio_specs = .mims_boot_ratio_specs_pe(scale),
         B = B,
         seed = seed,
         conf_level = conf_level,
@@ -593,6 +742,7 @@ bootstrap_mims_tem <- function(
         ),
         tau = tau,
         metrics = metrics,
+        ratio_specs = .mims_boot_ratio_specs_tem_ge(scale),
         B = B,
         seed = seed,
         conf_level = conf_level,
