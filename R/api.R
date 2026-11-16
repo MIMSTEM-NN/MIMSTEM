@@ -42,8 +42,63 @@
     invisible(TRUE)
 }
 
-.mims_effect_metrics <- function(method) {
-    switch(
+# Derived ratio names and denominators are shared with the revised
+# bootstrap engine. This prevents the public API from silently applying a
+# different PM definition from the Delta-Wald bootstrap calculation.
+.mims_api_ratio_specs <- function(method, scale = "risk") {
+    if (!scale %in% c("risk", "survival")) {
+        stop("Unknown effect scale: ", scale, call. = FALSE)
+    }
+    if (method %in% c("MIMS_TEM", "MIMS_S2TEM_GE")) {
+        return(.mims_boot_ratio_specs_tem_ge(scale))
+    }
+    if (identical(method, "MIMS_S2TEM_PE")) {
+        return(.mims_boot_ratio_specs_pe(scale))
+    }
+    stop("Unknown MIMS method.", call. = FALSE)
+}
+
+
+.mims_add_ratio_point <- function(point, method, scale = "risk", ratio_epsilon = 1e-6) {
+    specs <- .mims_api_ratio_specs(method, scale)
+    need <- unique(c(specs$numerator, specs$denominator))
+    missing <- setdiff(need, names(point))
+    if (length(missing)) {
+        stop("Cannot compute mediation proportions; missing: ",
+             paste(missing, collapse = ", "), call. = FALSE)
+    }
+    if (!is.numeric(ratio_epsilon) || length(ratio_epsilon) != 1L ||
+        !is.finite(ratio_epsilon) || ratio_epsilon < 0) {
+        stop("Invalid ratio_epsilon.", call. = FALSE)
+    }
+
+    for (j in seq_len(nrow(specs))) {
+        nm <- specs$metric[j]
+        numerator <- as.numeric(point[[specs$numerator[j]]])
+        denominator <- as.numeric(point[[specs$denominator[j]]])
+        valid <- is.finite(numerator) & is.finite(denominator) &
+            abs(denominator) > ratio_epsilon
+        value <- rep(NA_real_, nrow(point))
+        value[valid] <- numerator[valid] / denominator[valid]
+        # Preserve original estimator outputs; append/verify only derived ratios.
+        if (nm %in% names(point)) {
+            prev <- as.numeric(point[[nm]])
+            mismatch <- (!is.na(prev) & !is.na(value) &
+                        abs(prev - value) > 1e-9) |
+                        xor(is.na(prev), is.na(value))
+            if (any(mismatch, na.rm = TRUE)) {
+                stop("Bootstrap and API disagree on derived ratio ", nm,
+                     ". Ensure the updated bootstrap.R is installed.", call. = FALSE)
+            }
+        }
+        point[[nm]] <- value
+    }
+    point
+}
+
+
+.mims_effect_metrics <- function(method, scale = "risk") {
+    base <- switch(
         method,
         MIMS_TEM = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
         MIMS_S2TEM_GE = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
@@ -54,10 +109,12 @@
         ),
         stop("Unknown MIMS method.")
     )
+    c(base, .mims_api_ratio_specs(method, scale)$metric)
 }
 
-.mims_make_effect_table <- function(point, method, boot = NULL) {
-    metrics <- .mims_effect_metrics(method)
+
+.mims_make_effect_table <- function(point, method, boot = NULL, scale = "risk") {
+    metrics <- .mims_effect_metrics(method, scale)
     miss <- setdiff(c("tau", metrics), names(point))
     if (length(miss)) {
         stop("Internal result is missing: ", paste(miss, collapse = ", "), call. = FALSE)
@@ -92,7 +149,18 @@
 }
 
 .mims_make_fit <- function(method, call, point, boot, settings) {
-    effects <- .mims_make_effect_table(point, method, boot)
+    eps <- if (!is.null(boot) && !is.null(boot$diagnostics$ratio_epsilon)) {
+        boot$diagnostics$ratio_epsilon
+    } else {
+        1e-6
+    }
+    # Also available when bootstrap=FALSE (point estimate only).
+    point <- .mims_add_ratio_point(
+        point, method, scale = settings$scale, ratio_epsilon = eps
+    )
+    effects <- .mims_make_effect_table(
+        point, method, boot, scale = settings$scale
+    )
     
     endpoint_names <- switch(
         method,
@@ -158,7 +226,9 @@
 #' @param keep_replicates Keep the bootstrap replicate array.
 #' @param keep_fit_objects Keep fitted multi-state objects in the point result.
 #' @param verbose Show bootstrap progress.
-#' @return An object inheriting from `mims_fit`.
+#' @return An object inheriting from `mims_fit`. `$effects` includes
+#'   mediation proportions on the risk and RMTL scales; their Delta-Wald
+#'   confidence limits are available when `bootstrap = TRUE`.
 #' @export
 mims_tem <- function(
         dat,
