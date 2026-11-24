@@ -29,7 +29,7 @@
 }
 \arguments{
   \item{x, object}{A fitted object returned by \code{mims_tem()},
-  \code{mims_s2tem_ge()}, or \code{mims_s2tem_pe()}.}
+  \code{mims_s2tem_ge()}, or \code{mims_s2tem_pse()}.}
   \item{tau}{Optional fitted evaluation time. If omitted by \code{coef()} or
   \code{confint()}, the largest fitted evaluation time is used.}
   \item{effect_type}{Either \code{"risk"} or \code{"RMTL"}.}
@@ -37,7 +37,8 @@
   \item{digits}{Number of printed significant digits.}
   \item{parm}{Optional estimand names for \code{confint()}.}
   \item{level}{Confidence level used to reconstruct Wald intervals from the
-  stored bootstrap standard errors.}
+  stored standard errors (bootstrap for effects and paired-bootstrap delta
+  method for ratios).}
   \item{row.names, optional}{Standard arguments for \code{as.data.frame()}.}
   \item{ci}{Logical; for a single plotted estimand, draw stored confidence
   limits when available.}

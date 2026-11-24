@@ -82,3 +82,26 @@ test_that("unified bootstrap restores the caller RNG state", {
 
     expect_identical(.Random.seed, seed_before)
 })
+
+test_that("ratio intervals use paired bootstrap delta covariance", {
+    dat <- data.frame(A = rep(0:1, each = 10), y = seq_len(20) / 20)
+    estimator <- function(dat, tau) {
+        data.frame(tau = tau, IE = mean(dat$y), TE = 1 + mean(dat$y^2))
+    }
+    specs <- data.frame(metric = "PM_risk", numerator = "IE", denominator = "TE")
+    b <- MIMSTEM:::.bootstrap_mims_wald(
+        dat, estimator, tau = 1, metrics = c("IE", "TE"),
+        B = 30, seed = 123, keep_replicates = TRUE, verbose = FALSE,
+        ratio_specs = specs
+    )
+    num <- b$point$IE
+    den <- b$point$TE
+    grad <- c(1 / den, -num / den^2)
+    sigma <- stats::cov(cbind(b$replicates[1, 1, ], b$replicates[1, 2, ]))
+    se <- sqrt(as.numeric(crossprod(grad, sigma %*% grad)))
+    row <- b$intervals[b$intervals$metric == "PM_risk", ]
+    expect_equal(row$estimate, num / den)
+    expect_equal(row$se_boot, se, tolerance = 1e-12)
+    expect_equal(row$lower, num / den - stats::qnorm(0.975) * se)
+    expect_equal(row$upper, num / den + stats::qnorm(0.975) * se)
+})

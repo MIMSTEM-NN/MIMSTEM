@@ -17,3 +17,7 @@ Installed-package numerical regression checks also confirmed exact equality
 between the packaged GE/PE point estimators and the frozen verified refactors,
 exact equality of the three shared GE/PE endpoints, and exact PE telescoping
 identities.
+
+## Current 1.0.0 PSE / mediation-proportion revision
+
+The results above are historical and do not establish validation of this revision. Runtime installation, unit tests, smoke tests and numerical regression checks remain pending. Record actual results and session information before treating this snapshot as validated.

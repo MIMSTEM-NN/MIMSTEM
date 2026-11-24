@@ -1,8 +1,8 @@
-\name{mims_s2tem_pe}
-\alias{mims_s2tem_pe}
-\title{MIMS-S2TEM-PE for path-specific effects}
+\name{mims_s2tem_pse}
+\alias{mims_s2tem_pse}
+\title{MIMS-S2TEM-PSE for path-specific effects}
 \usage{
-mims_s2tem_pe(dat, tau = 1:10, basec = character(0), a = 1, astar = 0,
+mims_s2tem_pse(dat, tau = 1:10, basec = character(0), a = 1, astar = 0,
   bootstrap = TRUE, B = 200L, seed = 1L, conf_level = 0.95,
   stratified = FALSE, bh_method = "breslow", EMint = FALSE,
   scale = c("risk", "survival"), min_success_fraction = 0.8,
@@ -34,12 +34,21 @@ mims_s2tem_pe(dat, tau = 1:10, basec = character(0), a = 1, astar = 0,
   \item{subject_chunk_size}{Subject block size for path-kernel calculations.}
 }
 \value{An object inheriting from \code{mims_fit}.}
-\description{Fits the validated path-specific estimator. The main effect table reports TE, DE, and three mediator-related path-specific intervention effects.}
+\description{Fits the validated path-specific estimator. The main effect table reports TE, DE, overall indirect effect, three mediator-related path-specific intervention effects, their RMTL analogues, and mediation proportions.}
+\details{
+Mediation proportions include \code{PM_path_risk}, \code{PM_path_RMTL}, and
+\code{prop_T1_risk}, \code{prop_T2_risk}, \code{prop_T1_T2_risk} and their RMTL analogues.
+All use the total effect as denominator. The survival display uses the corresponding survival ratio names. Path-specific effects depend on the prespecified switch order.
+Effect confidence intervals use bootstrap standard errors and Wald intervals;
+ratio confidence intervals use first-order delta-method standard errors based
+on paired bootstrap covariance of numerator and denominator. Ratios are NA
+when the absolute total effect is at most 1e-6 and may lie outside [0, 1].
+}
 \examples{
 \dontrun{
 path <- system.file("extdata", "mims_example_s2tem.csv", package = "MIMSTEM")
 dat <- utils::read.csv(path)
-fit <- mims_s2tem_pe(
+fit <- mims_s2tem_pse(
   dat = dat,
   tau = c(2, 4, 6),
   basec = c("age", "sex"),

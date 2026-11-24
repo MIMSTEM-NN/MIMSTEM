@@ -5,7 +5,7 @@
         x$method,
         MIMS_TEM = "MIMS-TEM",
         MIMS_S2TEM_GE = "MIMS-S2TEM-GE",
-        MIMS_S2TEM_PE = "MIMS-S2TEM-PE",
+        MIMS_S2TEM_PSE = "MIMS-S2TEM-PSE",
         x$method
     )
 }
@@ -112,7 +112,7 @@ print.summary.mims_fit <- function(x, ..., digits = 4) {
             x$method,
             MIMS_TEM = "MIMS-TEM",
             MIMS_S2TEM_GE = "MIMS-S2TEM-GE",
-            MIMS_S2TEM_PE = "MIMS-S2TEM-PE",
+            MIMS_S2TEM_PSE = "MIMS-S2TEM-PSE",
             x$method
         ),
         " summary (", x$effect_type, ")\n",
@@ -188,7 +188,7 @@ plot.mims_fit <- function(x,
     tab <- .mims_select_effects(x, effect_type = effect_type, estimand = estimand)
 
     if (is.null(estimand)) {
-        preferred <- if (x$method == "MIMS_S2TEM_PE") {
+        preferred <- if (x$method == "MIMS_S2TEM_PSE") {
             c("TE", "DE", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y")
         } else {
             c("TE", "DE", "IE")

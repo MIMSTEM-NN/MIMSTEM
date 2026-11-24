@@ -7,7 +7,7 @@ pkg_ver <- as.character(utils::packageVersion("MIMSTEM"))
 cat("MIMSTEM version:", pkg_ver, "\n")
 
 exports <- sort(getNamespaceExports("MIMSTEM"))
-expected_exports <- sort(c("mims_tem", "mims_s2tem_ge", "mims_s2tem_pe"))
+expected_exports <- sort(c("mims_tem", "mims_s2tem_ge", "mims_s2tem_pse"))
 stopifnot(identical(exports, expected_exports))
 cat("Public API check: passed\n")
 

@@ -27,3 +27,7 @@ Before packaging, the following checks were completed on the development data:
 These checks document numerical equivalence of the refactor. They are not a
 substitute for method assumptions, model diagnostics, or application-specific
 validation.
+
+## Current 1.0.0 PSE / mediation-proportion revision
+
+The results above are historical and do not establish validation of this revision. Runtime installation, unit tests, smoke tests and numerical regression checks remain pending. Record actual results and session information before treating this snapshot as validated.

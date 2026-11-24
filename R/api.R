@@ -52,8 +52,8 @@
     if (method %in% c("MIMS_TEM", "MIMS_S2TEM_GE")) {
         return(.mims_boot_ratio_specs_tem_ge(scale))
     }
-    if (identical(method, "MIMS_S2TEM_PE")) {
-        return(.mims_boot_ratio_specs_pe(scale))
+    if (identical(method, "MIMS_S2TEM_PSE")) {
+        return(.mims_boot_ratio_specs_pse(scale))
     }
     stop("Unknown MIMS method.", call. = FALSE)
 }
@@ -102,7 +102,7 @@
         method,
         MIMS_TEM = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
         MIMS_S2TEM_GE = c("DE", "IE", "TE", "DE_RMTL", "IE_RMTL", "TE_RMTL"),
-        MIMS_S2TEM_PE = c(
+        MIMS_S2TEM_PSE = c(
             "TE", "DE", "IE_total", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y",
             "TE_RMTL", "DE_RMTL", "IE_total_RMTL", "P_A_T2_Y_RMTL",
             "P_A_T1_Y_RMTL", "P_A_T1_T2_Y_RMTL"
@@ -168,7 +168,7 @@
                                "rmtl00", "rmtl10", "rmtl11"), names(point)),
         MIMS_S2TEM_GE = intersect(c("tau", "psi00", "psi10", "psi11", "S00", "S10", "S11",
                                     "rmtl00", "rmtl10", "rmtl11"), names(point)),
-        MIMS_S2TEM_PE = intersect(c("tau", "psi0000", "psi1000", "psi1100", "psi1110", "psi1111",
+        MIMS_S2TEM_PSE = intersect(c("tau", "psi0000", "psi1000", "psi1100", "psi1110", "psi1111",
                                     "S0000", "S1000", "S1100", "S1110", "S1111"), names(point))
     )
     
@@ -194,7 +194,7 @@
             method,
             MIMS_TEM = "mims_tem",
             MIMS_S2TEM_GE = "mims_s2tem_ge",
-            MIMS_S2TEM_PE = "mims_s2tem_pe"
+            MIMS_S2TEM_PSE = "mims_s2tem_pse"
         ),
         "mims_fit"
     )
@@ -292,7 +292,8 @@ mims_tem <- function(
 #' @inheritParams mims_tem
 #' @param v_chunk_size Internal chunk size used by the numerical integration.
 #' @param max_grid_points Maximum adaptive hazard-grid size.
-#' @return An object inheriting from `mims_fit`.
+#' @return An object inheriting from `mims_fit`, including mediation proportions
+#'   and their paired-bootstrap Delta-Wald intervals when bootstrap is TRUE.
 #' @export
 mims_s2tem_ge <- function(
         dat,
@@ -354,7 +355,7 @@ mims_s2tem_ge <- function(
     )
 }
 
-#' MIMS-S2TEM-PE: path-specific effects with two sequential time-to-event mediators
+#' MIMS-S2TEM-PSE: path-specific effects with two sequential time-to-event mediators
 #'
 #' Preserve the MIMS-S2TEM-GE total/direct/overall-indirect endpoints and
 #' decompose the overall indirect effect into three mediator-related
@@ -370,9 +371,11 @@ mims_s2tem_ge <- function(
 #'   TE, DE, `IE_total`, `P_A_T2_Y`, `P_A_T1_Y`, and `P_A_T1_T2_Y`
 #'   (and their RMTL analogues). `IE_total` is also available in `$point`
 #'   for decomposition checks, and its bootstrap SE and Wald confidence
-#'   interval are included in the main effect table.
+#'   interval are included in the main effect table. Mediation proportions and
+#'   path-specific effect contributions relative to TE are also included; their
+#'   intervals use paired-bootstrap covariance and the delta method.
 #' @export
-mims_s2tem_pe <- function(
+mims_s2tem_pse <- function(
         dat,
         tau = 1:10,
         basec = character(0),
@@ -405,7 +408,7 @@ mims_s2tem_pe <- function(
     }
     
     if (isTRUE(bootstrap)) {
-        boot <- bootstrap_mims_s2tem_pe(
+        boot <- bootstrap_mims_s2tem_pse(
             dat = dat, tau = tau, basec = basec, a = a, astar = astar,
             bh_method = bh_method, EMint = EMint, scale = scale,
             B = B, seed = seed, conf_level = conf_level,
@@ -422,7 +425,7 @@ mims_s2tem_pe <- function(
         point <- boot$point
     } else {
         boot <- NULL
-        point <- mims_s2tem_pe_point(
+        point <- mims_s2tem_pse_point(
             dat = dat, tau = tau, basec = basec, a = a, astar = astar,
             bh_method = bh_method, EMint = EMint, scale = scale,
             verbose = verbose, keep_base_fit = FALSE,
@@ -434,7 +437,7 @@ mims_s2tem_pe <- function(
     }
     
     .mims_make_fit(
-        method = "MIMS_S2TEM_PE", call = cl, point = point, boot = boot,
+        method = "MIMS_S2TEM_PSE", call = cl, point = point, boot = boot,
         settings = list(
             tau = sort(unique(as.numeric(tau))), basec = basec, a = a, astar = astar,
             bootstrap = isTRUE(bootstrap), B = if (bootstrap) as.integer(B) else 0L,

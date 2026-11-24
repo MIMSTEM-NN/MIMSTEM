@@ -1,16 +1,16 @@
 # ============================================================
-# MIMS-S2TEM-PE refactor v2
-# Shared S2TEM backend + independent PE path kernel.
+# MIMS-S2TEM-PSE refactor v2
+# Shared S2TEM backend + independent PSE path kernel.
 #
 # Required first:
 #   source("s2tem_backend_refactor_v1.R", encoding = "UTF-8")
 #
 # This file no longer copies the chapter-2 estimator and no longer
 # captures/modifies another function body.  It uses the verified
-# .fit_s2tem_backend() directly and keeps the frozen PE kernel logic.
+# .fit_s2tem_backend() directly and keeps the frozen PSE kernel logic.
 # ============================================================
 
-.pe2_version <- "mims_s2tem_pe_shared_backend_v2_2026-09-17"
+.pe2_version <- "mims_s2tem_pse_shared_backend_v2_2026-09-17"
 .pe2_risks <- c("psi0000", "psi1000", "psi1100", "psi1110", "psi1111")
 .pe2_effects <- c(
     "P_A_Y", "P_A_T2_Y", "P_A_T1_Y", "P_A_T1_T2_Y",
@@ -83,7 +83,7 @@
 }
 
 # ------------------------------------------------------------
-# Baseline cumulative-hazard utilities for the PE kernel.
+# Baseline cumulative-hazard utilities for the PSE kernel.
 # ------------------------------------------------------------
 .pe2_hazard <- function(df) {
     if (!is.data.frame(df) || !all(c("time", "Haz") %in% names(df))) {
@@ -137,7 +137,7 @@
 }
 
 # ------------------------------------------------------------
-# Frozen structural PE kernel.
+# Frozen structural PSE kernel.
 # switches are ordered (zY, z2, z1, z12).
 # ------------------------------------------------------------
 .pe2_path_kernel <- function(ctx, switches, rule = "t2_overrides") {
@@ -332,10 +332,10 @@
 .pe2_format_risks <- function(q, scale = c("risk", "survival")) {
     scale <- match.arg(scale)
     if (!all(c("tau", .pe2_risks) %in% names(q))) {
-        stop("Missing five PE risk curves.")
+        stop("Missing five PSE risk curves.")
     }
     q <- q[c("tau", .pe2_risks)]
-    if (any(!is.finite(as.matrix(q)))) stop("Non-finite PE risk output.")
+    if (any(!is.finite(as.matrix(q)))) stop("Non-finite PSE risk output.")
 
     r <- list(
         P_A_Y = q$psi1000 - q$psi0000,
@@ -375,9 +375,9 @@
 }
 
 # ------------------------------------------------------------
-# Fit the shared observational S2TEM model once for PE.
+# Fit the shared observational S2TEM model once for PSE.
 # ------------------------------------------------------------
-.fit_s2tem_pe_base <- function(
+.fit_s2tem_pse_base <- function(
         dat,
         basec = character(0),
         a = 1,
@@ -542,10 +542,10 @@
         backend = backend,
         event_count = event_count,
         structural_zero_14_24 = structural_none
-    ), class = "mims_s2tem_pe_base")
+    ), class = "mims_s2tem_pse_base")
 }
 
-.predict_s2tem_pe <- function(
+.predict_s2tem_pse <- function(
         base,
         scale = c("risk", "survival"),
         primary_rule = c("t2_overrides", "require_both"),
@@ -558,8 +558,8 @@
 ) {
     scale <- match.arg(scale)
     primary_rule <- match.arg(primary_rule)
-    if (!inherits(base, "mims_s2tem_pe_base") || !identical(base$version, .pe2_version)) {
-        stop("base must be refitted with .fit_s2tem_pe_base() from this file.")
+    if (!inherits(base, "mims_s2tem_pse_base") || !identical(base$version, .pe2_version)) {
+        stop("base must be refitted with .fit_s2tem_pse_base() from this file.")
     }
     if (!identical(t1_coupling, "rank_preserving")) {
         stop("Only rank_preserving coupling is implemented.")
@@ -708,9 +708,9 @@
 }
 
 # ------------------------------------------------------------
-# Stage-2 point estimator: no dependency on the legacy PE file.
+# Stage-2 point estimator: no dependency on the legacy PSE file.
 # ------------------------------------------------------------
-mims_s2tem_pe_point <- function(
+mims_s2tem_pse_point <- function(
         dat,
         tau = 1:10,
         basec = character(0),
@@ -732,7 +732,7 @@ mims_s2tem_pe_point <- function(
     scale <- match.arg(scale)
     primary_rule <- match.arg(primary_rule)
 
-    base <- .fit_s2tem_pe_base(
+    base <- .fit_s2tem_pse_base(
         dat = dat,
         basec = basec,
         a = a,
@@ -745,7 +745,7 @@ mims_s2tem_pe_point <- function(
         v_chunk_size = v_chunk_size
     )
 
-    .predict_s2tem_pe(
+    .predict_s2tem_pse(
         base = base,
         scale = scale,
         primary_rule = primary_rule,
@@ -759,9 +759,9 @@ mims_s2tem_pe_point <- function(
 }
 
 # ------------------------------------------------------------
-# Audit PE common endpoints against a GE result.
+# Audit PSE common endpoints against a GE result.
 # ------------------------------------------------------------
-audit_s2tem_pe_ge <- function(path_out, ge_out, tolerance = 1e-6) {
+audit_s2tem_pse_ge <- function(path_out, ge_out, tolerance = 1e-6) {
     if (!is.data.frame(path_out) || !is.data.frame(ge_out)) {
         stop("Both inputs must be data.frames.")
     }
@@ -836,11 +836,11 @@ audit_s2tem_pe_ge <- function(path_out, ge_out, tolerance = 1e-6) {
 }
 
 # ------------------------------------------------------------
-# Regression test: frozen legacy PE vs refactor-v2 PE.
+# Regression test: frozen legacy PSE vs refactor-v2 PSE.
 # ------------------------------------------------------------
-verify_s2tem_pe_v2_equivalence <- function(
+verify_s2tem_pse_v2_equivalence <- function(
         dat,
-        legacy_pe_fun,
+        legacy_pse_fun,
         tau = 1:10,
         basec = character(0),
         a = 1,
@@ -857,7 +857,7 @@ verify_s2tem_pe_v2_equivalence <- function(
         subject_chunk_size = 512L,
         tolerance = 1e-12
 ) {
-    if (!is.function(legacy_pe_fun)) stop("legacy_pe_fun must be a function.")
+    if (!is.function(legacy_pse_fun)) stop("legacy_pse_fun must be a function.")
 
     capture_run <- function(fun) {
         ww <- character(0)
@@ -872,7 +872,7 @@ verify_s2tem_pe_v2_equivalence <- function(
     }
 
     old_call <- capture_run(function() {
-        legacy_pe_fun(
+        legacy_pse_fun(
             dat = dat,
             tau = tau,
             basec = basec,
@@ -894,7 +894,7 @@ verify_s2tem_pe_v2_equivalence <- function(
     })
 
     new_call <- capture_run(function() {
-        mims_s2tem_pe_point(
+        mims_s2tem_pse_point(
             dat = dat,
             tau = tau,
             basec = basec,

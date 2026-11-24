@@ -225,7 +225,7 @@ add_rmtl_to_output <- function(out, integration = c("trapezoid", "left")) {
 # interventional_cmaverse_marginal_2med().  It performs the data
 # preparation, five-transition Cox fit, baseline cumulative hazards,
 # grid construction/thinning, design matrices, and tau-independent
-# caches ONCE.  It does not itself define GE or PE contrasts.
+# caches ONCE.  It does not itself define GE or PSE contrasts.
 # ============================================================
 .fit_s2tem_backend <- function(
         dat,

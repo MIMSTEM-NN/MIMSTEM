@@ -6,7 +6,7 @@
 #   One bootstrap engine for:
 #     MIMS-TEM
 #     MIMS-S2TEM-GE
-#     MIMS-S2TEM-PE
+#     MIMS-S2TEM-PSE
 #
 # Statistical convention
 #   Individual-level nonparametric bootstrap.
@@ -153,7 +153,7 @@
     )
 }
 
-.mims_boot_ratio_specs_pe <- function(scale = "risk") {
+.mims_boot_ratio_specs_pse <- function(scale = "risk") {
     data.frame(
         metric = c(
             paste0("PM_path_", scale), paste0("prop_T2_", scale),
@@ -585,10 +585,10 @@ bootstrap_mims_s2tem_ge <- function(
 
 
 # ============================================================
-# S2TEM-PE wrapper
+# S2TEM-PSE wrapper
 # ============================================================
 
-bootstrap_mims_s2tem_pe <- function(
+bootstrap_mims_s2tem_pse <- function(
         dat,
         tau = 1:10,
         basec = character(0),
@@ -610,14 +610,14 @@ bootstrap_mims_s2tem_pe <- function(
         t1_coupling = "rank_preserving",
         subject_chunk_size = 512L
 ) {
-    if (!exists("mims_s2tem_pe_point", mode = "function")) {
-        stop("Source the verified S2TEM-PE refactor before calling this function.")
+    if (!exists("mims_s2tem_pse_point", mode = "function")) {
+        stop("Source the verified S2TEM-PSE refactor before calling this function.")
     }
     
     scale <- match.arg(scale)
     primary_rule <- match.arg(primary_rule)
     
-    # PE bootstrap reports the total, direct, and total indirect effects,
+    # PSE bootstrap reports the total, direct, and total indirect effects,
     # alongside the three path-specific components and their RMTL analogues.
     # Each metric's SE is computed from the same joint bootstrap replicates;
     # the shared engine reports Wald confidence intervals.
@@ -639,7 +639,7 @@ bootstrap_mims_s2tem_pe <- function(
     
     .bootstrap_mims_wald(
         dat = dat,
-        estimator = mims_s2tem_pe_point,
+        estimator = mims_s2tem_pse_point,
         estimator_args = list(
             basec = basec,
             a = a,
@@ -659,7 +659,7 @@ bootstrap_mims_s2tem_pe <- function(
         ),
         tau = tau,
         metrics = metrics,
-        ratio_specs = .mims_boot_ratio_specs_pe(scale),
+        ratio_specs = .mims_boot_ratio_specs_pse(scale),
         B = B,
         seed = seed,
         conf_level = conf_level,

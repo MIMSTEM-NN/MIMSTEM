@@ -8,8 +8,9 @@ one or two sequential time-to-event mediators using multi-state models.
 }
 \details{
 The public estimators are \code{mims_tem()}, \code{mims_s2tem_ge()}, and
-\code{mims_s2tem_pe()}. The package supports individual-level nonparametric
-bootstrap standard errors and Wald confidence intervals.
+\code{mims_s2tem_pse()}. The package supports individual-level nonparametric
+bootstrap standard errors and Wald confidence intervals, as well as mediation
+proportions with delta-method Wald intervals based on paired bootstrap covariance.
 
 Synthetic data files illustrating the required column structure are installed
 under \code{extdata}. They are demonstration data only and are not empirical
@@ -18,5 +19,5 @@ dissertation data. A package workflow vignette is available through
 }
 \seealso{
 \code{\link{mims_tem}}, \code{\link{mims_s2tem_ge}},
-\code{\link{mims_s2tem_pe}}
+\code{\link{mims_s2tem_pse}}
 }

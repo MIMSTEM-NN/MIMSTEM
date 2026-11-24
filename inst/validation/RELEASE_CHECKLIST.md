@@ -7,9 +7,9 @@ checks. A release should not be tagged until all applicable items are complete.
 
 - MIMS-TEM point estimator agrees with the frozen validated source implementation.
 - MIMS-S2TEM-GE point estimator agrees with the frozen validated source implementation.
-- MIMS-S2TEM-PE point estimator agrees with the frozen validated source implementation.
-- GE/PE common endpoints agree exactly on the same fitted settings.
-- PE telescoping identities are satisfied.
+- MIMS-S2TEM-PSE point estimator agrees with the frozen validated source implementation.
+- GE/PSE common endpoints agree exactly on the same fitted settings.
+- PSE telescoping identities are satisfied.
 - Unified bootstrap sampling and bootstrap standard errors agree with the validated refactor.
 - Any intended inference change (for example, percentile to Wald intervals) is documented separately from point-estimator validation.
 
@@ -17,7 +17,7 @@ checks. A release should not be tagged until all applicable items are complete.
 
 - Package installs from the source tarball.
 - `library(MIMSTEM)` loads without warning or error.
-- Public exports are exactly `mims_tem`, `mims_s2tem_ge`, and `mims_s2tem_pe`.
+- Public exports are exactly `mims_tem`, `mims_s2tem_ge`, and `mims_s2tem_pse`.
 - Synthetic example files are installed and readable.
 - `vignette("MIMSTEM-workflow", package = "MIMSTEM")` is available.
 - Installed smoke test ends with `Smoke test passed.`
@@ -39,3 +39,10 @@ checks. A release should not be tagged until all applicable items are complete.
 - Archive analysis scripts separately from the package source.
 - Preserve the preprocessing rules used to construct mediator and outcome times.
 - Preserve the bootstrap seed and number of bootstrap replicates.
+
+## Mediation proportion extension
+
+- Check point-only ratio outputs and undefined denominators.
+- Check path-proportion additivity on risk and RMTL scales.
+- Check paired-bootstrap covariance delta-method standard errors and Wald limits.
+- Record exact Git commit SHA for the 1.0.0 revision.

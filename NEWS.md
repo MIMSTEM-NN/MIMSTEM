@@ -1,12 +1,10 @@
 # MIMSTEM 1.0.0
 
-- First frozen dissertation release of MIMS-TEM, MIMS-S2TEM-GE, and MIMS-S2TEM-PE.
-- The numerical core is unchanged from the validated 0.1.x series.
-- Preserved the three-function public API and the shared S2TEM backend.
-- Preserved ordinary individual-level nonparametric bootstrap resampling with bootstrap standard errors and Wald confidence intervals as the package default.
-- Added a post-freeze change-control record for reproducibility and future maintenance.
-- Updated package citation and release metadata to version 1.0.0.
-- Finalized the maintainer contact address as `wnn0924@126.com`; no executable R code was changed.
+- Dissertation release of MIMS-TEM, MIMS-S2TEM-GE, and MIMS-S2TEM-PSE.
+- Standardized the public PSE function name to `mims_s2tem_pse()` and updated documentation and examples.
+- Added mediation proportions and path-specific contributions relative to the total effect, with paired-bootstrap delta-method Wald inference.
+- Retained the supplied point-estimation framework and the shared S2TEM backend.
+- Updated validation scripts and source hashes; see validation records for checks still required.
 
 # MIMSTEM 0.1.5
 

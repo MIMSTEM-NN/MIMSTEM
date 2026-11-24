@@ -1,6 +1,6 @@
 export(mims_tem)
 export(mims_s2tem_ge)
-export(mims_s2tem_pe)
+export(mims_s2tem_pse)
 S3method(print,mims_fit)
 S3method(summary,mims_fit)
 S3method(print,summary.mims_fit)

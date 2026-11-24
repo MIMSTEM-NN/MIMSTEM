@@ -31,6 +31,13 @@ mims_s2tem_ge(dat, tau = 1:10, basec = character(0), a = 1, astar = 0,
 }
 \value{An object inheriting from \code{mims_fit}.}
 \description{Fits the validated MIMS-S2TEM-GE estimator for total, direct, and overall indirect effects.}
+\details{
+\code{PM_risk} (or \code{PM_survival}) and \code{PM_RMTL} are the indirect effect divided by the total effect on the corresponding scale, including for point-only fits.
+Effect confidence intervals use bootstrap standard errors and Wald intervals;
+ratio confidence intervals use first-order delta-method standard errors based
+on paired bootstrap covariance of numerator and denominator. Ratios are NA
+when the absolute total effect is at most 1e-6 and may lie outside [0, 1].
+}
 \examples{
 \dontrun{
 path <- system.file("extdata", "mims_example_s2tem.csv", package = "MIMSTEM")

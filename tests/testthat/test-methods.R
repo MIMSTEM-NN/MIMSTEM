@@ -43,3 +43,11 @@ test_that("mims fits coerce to the tidy effect table", {
     d <- as.data.frame(x)
     expect_equal(d, x$effects)
 })
+
+test_that("PSE method label and ratio extraction are consistent", {
+    x <- make_mock_mims_fit()
+    x$method <- "MIMS_S2TEM_PSE"
+    expect_identical(MIMSTEM:::.mims_method_label(x), "MIMS-S2TEM-PSE")
+    x$effects$estimand[x$effects$estimand == "IE"] <- "PM_path_risk"
+    expect_equal(unname(coef(x, tau = 2, estimand = "PM_path_risk")), -0.04)
+})

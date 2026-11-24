@@ -1,7 +1,7 @@
 test_that("public API functions are available", {
     expect_true(is.function(mims_tem))
     expect_true(is.function(mims_s2tem_ge))
-    expect_true(is.function(mims_s2tem_pe))
+    expect_true(is.function(mims_s2tem_pse))
 })
 
 test_that("missing requested baseline covariates fail early", {

@@ -18,7 +18,7 @@ estimators for time-to-event mediators:
 
 - `mims_tem()` for one time-to-event mediator;
 - `mims_s2tem_ge()` for overall effects with two sequential time-to-event mediators;
-- `mims_s2tem_pe()` for path-specific decomposition with two sequential time-to-event mediators.
+- `mims_s2tem_pse()` for path-specific decomposition with two sequential time-to-event mediators.
 
 The package preserves the estimands and numerical conventions used by the
 validated dissertation estimators. The recommended workflow is to validate the
@@ -30,7 +30,7 @@ computationally intensive bootstrap.
 For MIMS-TEM, the subject-level data frame contains `A`, `t_out`, `d_out`
 (or `yevent`), `t_med`, `d_med`, and the baseline covariates named in `basec`.
 
-For MIMS-S2TEM-GE and MIMS-S2TEM-PE, the corresponding mediator columns are
+For MIMS-S2TEM-GE and MIMS-S2TEM-PSE, the corresponding mediator columns are
 `t_med1`, `d_med1`, `t_med2`, and `d_med2`. Exposure `A` must be coded 0/1.
 The package expects one row per subject.
 
@@ -116,9 +116,9 @@ The risk endpoints are `psi00`, `psi10`, and `psi11`, with
 
 `TE = psi11 - psi00`.
 
-# MIMS-S2TEM-PE
+# MIMS-S2TEM-PSE
 
-MIMS-S2TEM-PE retains the GE endpoints and introduces two intermediate
+MIMS-S2TEM-PSE retains the GE endpoints and introduces two intermediate
 counterfactual risks. The frozen switch order is `(zY, z2, z1, z12)`:
 
 `psi0000 -> psi1000 -> psi1100 -> psi1110 -> psi1111`.
@@ -126,8 +126,8 @@ counterfactual risks. The frozen switch order is `(zY, z2, z1, z12)`:
 The primary analysis uses rank-preserving coupling for the two counterfactual
 copies of the first mediator and the `t2_overrides` mixed-history rule.
 
-```{r pe-point}
-fit_pe <- mims_s2tem_pe(
+```{r pse-point}
+fit_pse <- mims_s2tem_pse(
   dat = s2_dat,
   tau = c(2, 4, 6),
   basec = c("age", "sex"),
@@ -136,11 +136,11 @@ fit_pe <- mims_s2tem_pe(
   verbose = FALSE
 )
 
-summary(fit_pe, tau = 6)
-fit_pe$point
+summary(fit_pse, tau = 6)
+fit_pse$point
 ```
 
-The main PE effects are
+The main PSE effects are
 
 - `DE = psi1000 - psi0000`;
 - `P_A_T2_Y = psi1100 - psi1000`;
@@ -148,44 +148,52 @@ The main PE effects are
 - `P_A_T1_T2_Y = psi1111 - psi1110`;
 - `TE = psi1111 - psi0000`.
 
-The overall indirect effect remains available in `fit_pe$point$IE_total` and
+The overall indirect effect is reported in the main effect table and remains available in `fit_pse$point$IE_total` and
 satisfies
 
 `IE_total = P_A_T2_Y + P_A_T1_Y + P_A_T1_T2_Y`.
 
-# GE/PE consistency
+# GE/PSE consistency
 
-When GE and PE are fitted to the same data using the same settings, the shared
+When GE and PSE are fitted to the same data using the same settings, the shared
 endpoints should agree up to numerical tolerance.
 
 ```{r endpoint-checks}
-max(abs(fit_pe$point$psi0000 - fit_ge$point$psi00))
-max(abs(fit_pe$point$psi1000 - fit_ge$point$psi10))
-max(abs(fit_pe$point$psi1111 - fit_ge$point$psi11))
+max(abs(fit_pse$point$psi0000 - fit_ge$point$psi00))
+max(abs(fit_pse$point$psi1000 - fit_ge$point$psi10))
+max(abs(fit_pse$point$psi1111 - fit_ge$point$psi11))
 
 max(abs(
-  fit_pe$point$IE_total -
-    fit_pe$point$P_A_T2_Y -
-    fit_pe$point$P_A_T1_Y -
-    fit_pe$point$P_A_T1_T2_Y
+  fit_pse$point$IE_total -
+    fit_pse$point$P_A_T2_Y -
+    fit_pse$point$P_A_T1_Y -
+    fit_pse$point$P_A_T1_T2_Y
 ))
 ```
+
+# Mediation proportions
+
+For TEM and GE, `PM_risk` and `PM_RMTL` are the indirect effect divided by the total effect on the corresponding scale. For PSE, `PM_path_risk` and `PM_path_RMTL` use the overall indirect effect as numerator. `prop_T1_risk`, `prop_T2_risk`, and `prop_T1_T2_risk` (and their `_RMTL` analogues) divide the respective path-specific effect by the total effect, not by the overall indirect effect. With `scale = "survival"`, the `_risk` ratio names become `_survival`; RMTL names are unchanged.
+
+Ratios are available even with `bootstrap = FALSE`. With bootstrap inference, ordinary effects use bootstrap standard errors and Wald intervals; ratios use first-order delta-method standard errors from paired bootstrap covariance of the numerator and denominator and Wald intervals centered on the original-sample ratio. Ratios are not percentages and are not constrained to [0, 1]. Ratios are undefined (NA) when the absolute total effect is at most 1e-6. Inspect `fit$diagnostics$bootstrap$ratio_diagnostics` for denominator instability and paired replicate counts. Intervals are unavailable when the minimum bootstrap success requirement is not met.
+
+The default `B = 200` is useful for demonstrations; increase it for formal inference (e.g., `B = 1000`). Path-specific effects depend on the prespecified mechanism-switching order and coupling assumptions.
 
 # Results and diagnostics
 
 All public estimators return an object inheriting from `mims_fit`.
 
 ```{r result-access}
-fit_pe$point
-fit_pe$endpoints
-fit_pe$effects
-fit_pe$diagnostics
-fit_pe$settings
+fit_pse$point
+fit_pse$endpoints
+fit_pse$effects
+fit_pse$diagnostics
+fit_pse$settings
 
-as.data.frame(fit_pe)
-coef(fit_pe, tau = 6)
-confint(fit_pe, tau = 6)
-plot(fit_pe)
+as.data.frame(fit_pse)
+coef(fit_pse, tau = 6)
+confint(fit_tem_boot, tau = 6)
+plot(fit_pse)
 ```
 
 Cox-model warnings and path-kernel clipping diagnostics should be inspected,
@@ -195,11 +203,11 @@ itself establish the assumptions required for causal interpretation.
 # Reproducibility checklist
 
 For a reproducible analysis, record the package version, evaluation times,
-baseline covariates, exposure contrast, `EMint`, S2TEM grid settings, PE
+baseline covariates, exposure contrast, `EMint`, S2TEM grid settings, PSE
 mixed-history rule, bootstrap replicate count, bootstrap seed, and resampling
 scheme.
 
 ```{r reproducibility}
 packageVersion("MIMSTEM")
-fit_pe$settings
+fit_pse$settings
 ```

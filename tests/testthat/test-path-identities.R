@@ -1,4 +1,4 @@
-test_that("PE endpoint differences telescope exactly", {
+test_that("PSE endpoint differences telescope exactly", {
     q <- data.frame(
         tau = c(1, 2, 3),
         psi0000 = c(0.10, 0.20, 0.30),
@@ -22,7 +22,7 @@ test_that("PE endpoint differences telescope exactly", {
     expect_equal(z$TE, z$DE + z$IE_total, tolerance = 1e-14)
 })
 
-test_that("PE survival display reverses effect signs but not risk endpoints", {
+test_that("PSE survival display reverses effect signs but not risk endpoints", {
     q <- data.frame(
         tau = c(1, 2),
         psi0000 = c(0.10, 0.20),
@@ -41,4 +41,22 @@ test_that("PE survival display reverses effect signs but not risk endpoints", {
     expect_equal(s$IE_total, -r$IE_total, tolerance = 1e-14)
     expect_equal(s$TE, -r$TE, tolerance = 1e-14)
     expect_equal(s$DE_RMTL, r$DE_RMTL, tolerance = 1e-14)
+})
+
+test_that("PSE point ratios are additive and near-zero totals are undefined", {
+    q <- data.frame(tau = c(1, 2), TE = c(-0.2, 0),
+        IE_total = c(-0.06, 0), P_A_T2_Y = c(-0.01, 0),
+        P_A_T1_Y = c(-0.03, 0), P_A_T1_T2_Y = c(-0.02, 0),
+        TE_RMTL = c(-0.4, 0), IE_total_RMTL = c(-0.12, 0),
+        P_A_T2_Y_RMTL = c(-0.02, 0), P_A_T1_Y_RMTL = c(-0.06, 0),
+        P_A_T1_T2_Y_RMTL = c(-0.04, 0))
+    z <- MIMSTEM:::.mims_add_ratio_point(q, "MIMS_S2TEM_PSE")
+    for (suffix in c("risk", "RMTL")) {
+        pm <- z[[paste0("PM_path_", suffix)]]
+        parts <- z[[paste0("prop_T1_", suffix)]] +
+            z[[paste0("prop_T2_", suffix)]] + z[[paste0("prop_T1_T2_", suffix)]]
+        expect_equal(pm, parts)
+        expect_equal(pm[1], 0.3)
+        expect_true(is.na(pm[2]))
+    }
 })

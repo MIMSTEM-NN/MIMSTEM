@@ -1,0 +1,10 @@
+# SHA-256 hashes of executable R source files for MIMSTEM 1.0.0
+# Frozen dissertation release; hashes were regenerated from the 1.0.0 source tree.
+# Numerical R sources are unchanged from the validated 0.1.5 core.
+
+20b6b74d65ddc0dd758e81c2b63d198a246f13b07b3457949f556bfaff1656eb  R/api.R
+bd86479b065235700ebd9ad8cd2f7b567ec8fdb6c718debe4a8af8964117aad4  R/backend-s2tem.R
+20760f1e7f8270be3d65ac5ad3a81440cf695604df6048744e1f7058c6a2f025  R/backend-tem.R
+562630812b0837c57bceba2a4510379c13ee83762097fd4ed1c2eaef42c8be05  R/bootstrap.R
+df1538a29a217a0f2abed640da24c3b297b545daa6654718d2e85ac8b65580b7  R/methods.R
+35e461ad8cd979c958b333389f9c699b3063a85f8de5eb0328dc25969e6ad205  R/path-kernel.R
